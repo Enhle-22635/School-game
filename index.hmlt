@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Model School: Knowledge Quest</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #000; }
+        canvas { display: block; }
+        
+        /* UI Overlay */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        
+        #question-box { 
+            pointer-events: auto; display: none; background: rgba(255, 255, 255, 0.95); 
+            padding: 30px; border-radius: 15px; text-align: center; width: 80%; max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 4px solid #336699;
+        }
+
+        input { width: 80%; padding: 12px; margin: 15px 0; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; }
+        button { padding: 12px 25px; background: #336699; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        #mobile-btn { 
+            position: absolute; bottom: 40px; pointer-events: auto;
+            width: 100px; height: 100px; background: rgba(255,255,255,0.2); 
+            border: 3px solid white; border-radius: 50%; color: white; font-weight: bold;
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        #stats { position: absolute; top: 20px; left: 20px; color: white; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="stats">Level: <span id="lvl-num">1</span> | Subject: <span id="subj-text">Math</span></div>
+
+    <div id="ui-layer">
+        <div id="question-box">
+            <h3 id="q-subject" style="color: #336699; margin-top: 0;">Subject</h3>
+            <p id="q-text" style="font-size: 1.1em; color: #333;">Question text here?</p>
+            <input type="text" id="ans-input" placeholder="Type answer...">
+            <br>
+            <button onclick="submitAnswer()">SUBMIT ANSWER</button>
+        </div>
+        <div id="mobile-btn">WALK</div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // --- DATA: 20 CAPS QUESTIONS ---
+        const gameLevels = [
+            { s: "Math", q: "Solve for x: 2x + 5 = 15", a: "5" },
+            { s: "Math", q: "Calculate: -15 + (-5) * 2", a: "-25" },
+            { s: "Math", q: "Value of 2x^2 - 4 if x = 3?", a: "14" },
+            { s: "Math", q: "Angle between 180 and 360 degrees?", a: "reflex" },
+            { s: "Math", q: "Simplify: 3a + 4b - a + 2b", a: "2a+6b" },
+            { s: "Math", q: "Square root of 144?", a: "12" },
+            { s: "Math", q: "Sum of interior angles of a triangle?", a: "180" },
+            { s: "Geography", q: "Line dividing North and South hemispheres?", a: "equator" },
+            { s: "Geography", q: "Rock formed from cooling magma?", a: "igneous" },
+            { s: "Geography", q: "Name the ancient supercontinent.", a: "pangea" },
+            { s: "Geography", q: "Height above sea level term?", a: "altitude" },
+            { s: "Geography", q: "Which is larger scale: 1:50k or 1:10k?", a: "1:10000" },
+            { s: "Geography", q: "Process of rocks breaking down?", a: "weathering" },
+            { s: "Geography", q: "Smallest SA province by land area?", a: "gauteng" },
+            { s: "Life Orientation", q: "Bill of Rights: Section for food/water?", a: "27" },
+            { s: "Life Orientation", q: "Overgeneralized belief about a group?", a: "stereotype" },
+            { s: "Life Orientation", q: "Career category for plants/animals?", a: "outdoor" },
+            { s: "Life Orientation", q: "True or False: Values are important beliefs.", a: "true" },
+            { s: "Life Orientation", q: "Ability to share others' feelings?", a: "empathy" },
+            { s: "Life Orientation", q: "Legal minimum working age in SA?", a: "15" }
+        ];
+
+        // --- 3D ENGINE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Lights
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+        scene.add(light);
+
+        // School Hallway Floor
+        const floorGeo = new THREE.PlaneGeometry(15, 1000);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        // Building the Gates
+        const gates = [];
+        gameLevels.forEach((lvl, i) => {
+            const gateGeo = new THREE.BoxGeometry(15, 8, 0.5);
+            const gateMat = new THREE.MeshStandardMaterial({ 
+                color: i < 7 ? 0x00ff00 : (i < 14 ? 0x0088ff : 0xffaa00), 
+                transparent: true, opacity: 0.4 
+            });
+            const gate = new THREE.Mesh(gateGeo, gateMat);
+            gate.position.set(0, 4, -(i + 1) * 30);
+            scene.add(gate);
+            gates.push(gate);
+        });
+
+        // --- CONTROLS & STATE ---
+        let currentLvl = 0;
+        let isWalking = false;
+        let isLocked = false;
+        camera.position.set(0, 1.6, 0);
+
+        // Mobile Events
+        const btn = document.getElementById('mobile-btn');
+        btn.addEventListener('touchstart', () => isWalking = true);
+        btn.addEventListener('touchend', () => isWalking = false);
+        // Keyboard Events
+        window.addEventListener('keydown', (e) => { if(e.key === 'w') isWalking = true; });
+        window.addEventListener('keyup', (e) => { if(e.key === 'w') isWalking = false; });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (isWalking && !isLocked) {
+                camera.position.z -= 0.15;
+                
+                // Check for gate collision
+                let nextGatePos = -(currentLvl + 1) * 30;
+                if (camera.position.z <= nextGatePos + 2) {
+                    triggerQuestion();
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+        function triggerQuestion() {
+            isLocked = true;
+            isWalking = false;
+            const data = gameLevels[currentLvl];
+            document.getElementById('q-subject').innerText = data.s;
+            document.getElementById('q-text').innerText = data.q;
+            document.getElementById('question-box').style.display = 'block';
+        }
+
+        window.submitAnswer = function() {
+            const userAns = document.getElementById('ans-input').value.toLowerCase().trim();
+            const correctAns = gameLevels[currentLvl].a.toLowerCase();
+
+            if (userAns.includes(correctAns)) {
+                alert("Correct! Transitioning to next level.");
+                document.getElementById('question-box').style.display = 'none';
+                document.getElementById('ans-input').value = "";
+                
+                // Remove the gate we just passed
+                scene.remove(gates[currentLvl]);
+                
+                currentLvl++;
+                if (currentLvl >= 20) {
+                    alert("CONGRATULATIONS! You have graduated the Model School!");
+                    location.reload();
+                }
+                
+                document.getElementById('lvl-num').innerText = currentLvl + 1;
+                document.getElementById('subj-text').innerText = gameLevels[currentLvl].s;
+                isLocked = false;
+            } else {
+                alert("Incorrect. Review your CAPS notes and try again!");
+            }
+        }
+
+        animate();
+    </script>
+</body>
+</html>
